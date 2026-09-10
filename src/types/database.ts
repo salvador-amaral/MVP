@@ -10,6 +10,8 @@ export interface Organization {
   id: string;
   name: string;
   slug: string;
+  /** Optional Reply-To for client emails. Empty = platform default. */
+  reply_to_email: string;
   reminder_settings: ReminderSettings;
   created_at: string;
   updated_at: string;
@@ -73,6 +75,10 @@ export interface Request {
   custom_message: string;
   expires_at: string | null;
   reminders_enabled: boolean;
+  /** Last successful invite delivery. Null = never delivered. */
+  invite_sent_at: string | null;
+  /** Most recent delivery failure. Empty when the last send succeeded. */
+  last_email_error: string;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -112,6 +118,9 @@ export interface Reminder {
   channel: "email";
   sent_at: string;
   note: string;
+  /** "failed" rows are kept as an audit trail and retried by the worker. */
+  status: "sent" | "failed";
+  error: string;
 }
 
 // --- enriched shapes used by UI -------------------------------------------------

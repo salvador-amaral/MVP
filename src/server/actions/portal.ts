@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createAdminClient, STORAGE_BUCKET, MAX_FILE_SIZE } from "@/lib/supabase/admin";
 import { isExpired } from "@/lib/security/tokens";
+import { staffEditsAllowed } from "@/lib/portal-preview";
 import { getSessionUser } from "@/server/data";
 import type { ActionState } from "@/lib/action-state";
 import type { Request, RequestItem } from "@/types/database";
@@ -46,16 +47,19 @@ async function loadRequestByToken(
   }
 
   // Staff of this office only see a read-only preview — they must never be
-  // able to submit/upload on the client portal.
-  const hasSessionCookie = (await cookies())
-    .getAll()
-    .some((c) => c.name.startsWith("sb-"));
-  if (hasSessionCookie) {
-    const session = await getSessionUser();
-    if (session?.organization_id === request.organization_id) {
-      return {
-        error: "Modo pré-visualização do escritório — apenas o cliente pode enviar documentos.",
-      };
+  // able to submit/upload on the client portal. PORTAL_ALLOW_STAFF_EDITS=true
+  // lifts this for local testing — see src/lib/portal-preview.ts.
+  if (!staffEditsAllowed()) {
+    const hasSessionCookie = (await cookies())
+      .getAll()
+      .some((c) => c.name.startsWith("sb-"));
+    if (hasSessionCookie) {
+      const session = await getSessionUser();
+      if (session?.organization_id === request.organization_id) {
+        return {
+          error: "Modo pré-visualização do escritório — apenas o cliente pode enviar documentos.",
+        };
+      }
     }
   }
 

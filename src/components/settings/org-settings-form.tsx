@@ -11,9 +11,11 @@ import type { ReminderSettings } from "@/types/database";
 
 export function OrgSettingsForm({
   defaultName,
+  defaultReplyTo,
   reminderSettings,
 }: {
   defaultName: string;
+  defaultReplyTo: string;
   reminderSettings: ReminderSettings;
 }) {
   const [state, formAction] = useActionState(updateOrganizationAction, initialActionState);
@@ -23,6 +25,21 @@ export function OrgSettingsForm({
       <div className="space-y-2">
         <Label htmlFor="name">Nome do escritório</Label>
         <Input id="name" name="name" defaultValue={defaultName} required />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="replyToEmail">Email de resposta (opcional)</Label>
+        <Input
+          id="replyToEmail"
+          name="replyToEmail"
+          type="email"
+          defaultValue={defaultReplyTo}
+          placeholder="escritorio@exemplo.pt"
+        />
+        <p className="text-xs text-muted-foreground">
+          Quando um cliente responde a um email, a resposta é entregue neste
+          endereço. Deixe vazio para usar o endereço da plataforma.
+        </p>
       </div>
 
       <div className="rounded-md border p-4">

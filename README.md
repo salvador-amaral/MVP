@@ -32,6 +32,11 @@ mobile phone.
 - **Magic links:** cryptographically random 32-byte tokens, expire after 30 days,
   and only expose the single request they belong to (token-gated service-role
   server code). Draft links are never open.
+- **Staff preview:** when an accountant opens a magic link belonging to their own
+  organisation, the portal renders read-only — they see exactly what the client
+  sees but can never upload or answer on their behalf. Both the page and the
+  server actions enforce this. For local testing only, `PORTAL_ALLOW_STAFF_EDITS=true`
+  lifts it (see `src/lib/portal-preview.ts`) — never enable it in production.
 - **Files:** private Supabase Storage bucket (`client-files`) accessed **only via
   short-lived presigned URLs** (60 s download, direct-to-storage signed upload).
   No long-lived public URLs anywhere.
@@ -166,6 +171,26 @@ Portuguese templates in `src/lib/emails.ts`: the initial checklist invite and
 automatic/manual reminders. Configure `RESEND_API_KEY` + `EMAIL_FROM` (a domain
 verified in Resend). Without a key the app runs in dev mode and prints the email
 that would be sent.
+
+**Reply-To per office:** the `From` address is always the platform's verified
+domain, but each organization can set an *Email de resposta* in **Definições →
+Organização**. When set, client replies (invites, reminders and rejections) are
+delivered to the office inbox; when left empty the platform default is used and
+emails say they cannot be answered. A malformed address is ignored rather than
+failing the send. Migration: `supabase/migrations/20250101000003_org_reply_to.sql`.
+
+**Delivery status:** the email layer never throws — every send returns
+`{ ok: true }` or `{ ok: false, error }`. A failed invite therefore never rolls
+back the request (it is already persisted as `sent`): the reason is stored in
+`requests.last_email_error`, shown as an amber banner on the request page, and
+returned as a **warning** toast ("Pedido criado, mas o email não foi entregue")
+with *Reenviar convite* as the retry. Reminder attempts are recorded in
+`reminders` with `status = sent | failed`, and the automatic worker counts only
+**successful** rows as "already reminded" — so a failed reminder is retried on
+the next run instead of being silently skipped forever. All client-supplied text
+(client name, office name, custom message) is HTML-escaped before it reaches a
+template. Migrations: `20250101000003_org_reply_to.sql`,
+`20250101000004_email_delivery_status.sql`.
 
 ---
 

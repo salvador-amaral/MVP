@@ -36,6 +36,7 @@ export default async function SettingsPage() {
           <CardContent>
             <OrgSettingsForm
               defaultName={org.name}
+              defaultReplyTo={org.reply_to_email}
               reminderSettings={org.reminder_settings as ReminderSettings}
             />
           </CardContent>

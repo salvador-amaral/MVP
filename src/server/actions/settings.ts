@@ -29,6 +29,7 @@ export async function updateOrganizationAction(
 
   const parsed = orgSettingsSchema.safeParse({
     name: formData.get("name"),
+    replyToEmail: String(formData.get("replyToEmail") ?? "").trim(),
     reminderSettings: {
       enabled: formData.get("remindersEnabled") === "on",
       daysBefore,
@@ -44,6 +45,7 @@ export async function updateOrganizationAction(
     .from("organizations")
     .update({
       name: parsed.data.name,
+      reply_to_email: parsed.data.replyToEmail,
       reminder_settings: parsed.data.reminderSettings,
     })
     .eq("id", user.organization_id);

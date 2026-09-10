@@ -89,14 +89,24 @@ async function sendRejectionNotification(
     if (!client) return;
 
     const org = await getCurrentOrganization(userId);
-    await sendRejectionEmail({
+    const delivery = await sendRejectionEmail({
       to: client.email,
       orgName: org?.name ?? "O nosso escritório",
       clientName: client.name,
       magicUrl: requestPortalUrl(request.magic_token),
       itemTitle: info.itemTitle,
       reason: info.reason || undefined,
+      replyTo: org?.reply_to_email,
     });
+
+    if (!delivery.ok) {
+      // Surface it on the request so the office can see the client was never
+      // told, without failing the review that already succeeded.
+      await supabase
+        .from("requests")
+        .update({ last_email_error: delivery.error })
+        .eq("id", info.requestId);
+    }
   } catch (emailError) {
     // The review itself already succeeded; never fail it over the email.
     console.error("rejection email failed", emailError);

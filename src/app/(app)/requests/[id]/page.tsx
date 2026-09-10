@@ -94,7 +94,7 @@ export default async function RequestDetailPage({
       .order("position", { ascending: true }),
     supabase
       .from("reminders")
-      .select("type, sent_at")
+      .select("type, sent_at, status, error")
       .eq("request_id", id)
       .order("sent_at", { ascending: false }),
   ]);
@@ -218,6 +218,14 @@ export default async function RequestDetailPage({
             </p>
           ) : null}
 
+          {request.last_email_error ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <strong>Email não entregue.</strong> A última tentativa de contacto
+              falhou: {request.last_email_error}. Verifique o remetente
+              configurado ou use «Reenviar convite».
+            </p>
+          ) : null}
+
           <div className="flex justify-end border-t pt-3">
             {!(displayStatus === "completed" && !isAdmin(user)) ? (
               <ConfirmButton
@@ -279,8 +287,16 @@ export default async function RequestDetailPage({
                 <span className="flex items-center gap-2">
                   <Bell className="h-4 w-4 text-muted-foreground" />
                   {reminder.type === "automatic" ? "Lembrete automático" : "Lembrete manual"}
+                  {reminder.status === "failed" ? (
+                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
+                      falhou
+                    </span>
+                  ) : null}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={reminder.error || undefined}
+                >
                   {format(new Date(reminder.sent_at), "dd/MM/yyyy HH:mm")}
                 </span>
               </div>

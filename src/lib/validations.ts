@@ -67,6 +67,9 @@ export const reviewItemSchema = z.object({
 // ---- settings ----
 export const orgSettingsSchema = z.object({
   name: requiredText.max(200),
+  // Optional. Blank means "use the platform default" — the form always submits
+  // a string, so an empty value has to be explicitly allowed here.
+  replyToEmail: z.union([z.literal(""), emailSchema]).default(""),
   reminderSettings: z.object({
     enabled: z.boolean(),
     daysBefore: z.array(z.number().min(0).max(60)),

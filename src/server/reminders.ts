@@ -33,7 +33,7 @@ export async function processDueReminders(): Promise<{
   // Organizations → rules
   const { data: orgs } = await admin
     .from("organizations")
-    .select("id, name, reminder_settings");
+    .select("id, name, reminder_settings, reply_to_email");
   const orgById = new Map<string, Organization & { reminder_settings: ReminderSettings }>();
   for (const o of orgs ?? []) orgById.set(o.id, o as Organization & { reminder_settings: ReminderSettings });
 
@@ -57,11 +57,19 @@ export async function processDueReminders(): Promise<{
 
   // Existing automatic reminders per request → avoid duplicates
   const requestIds = requestRows.map((r) => r.id);
-  const { data: sentRows } = await admin
+  // Only successful rows count as "already reminded", so a delivery that
+  // failed is retried on the next run instead of being skipped forever.
+  const { data: sentRows, error: sentError } = await admin
     .from("reminders")
     .select("id, request_id, note")
     .eq("type", "automatic")
+    .eq("status", "sent")
     .in("request_id", requestIds);
+  if (sentError) {
+    // Never guess: an unreadable dedupe ledger could mean re-emailing clients.
+    console.error("reminder dedupe query failed", sentError);
+    return { remindersSent, requestsExpired };
+  }
   const sentByRequest = new Map<string, Set<string>>();
   for (const row of sentRows ?? []) {
     const s = sentByRequest.get((row as ReminderRow).request_id) ?? new Set();
@@ -117,20 +125,23 @@ export async function processDueReminders(): Promise<{
 
     for (const rule of rules) {
       if (sent.has(rule)) continue; // already reminded for this rule
-      await sendReminderEmail({
+      const delivery = await sendReminderEmail({
         to: client.email,
         orgName: org.name,
         clientName: client.name,
         magicUrl,
         reason,
+        replyTo: org.reply_to_email,
       });
       await admin.from("reminders").insert({
         request_id: request.id,
         type: "automatic",
         channel: "email",
         note: rule,
+        status: delivery.ok ? "sent" : "failed",
+        error: delivery.ok ? "" : delivery.error,
       });
-      remindersSent += 1;
+      if (delivery.ok) remindersSent += 1;
     }
   }
 

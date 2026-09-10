@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { getPortalContext } from "@/server/portal-data";
 import { getSessionUser } from "@/server/data";
+import { staffEditsAllowed } from "@/lib/portal-preview";
 import { PortalApp } from "@/components/portal/portal-app";
 import { PortalError } from "@/components/portal/portal-error";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -49,11 +50,14 @@ export default async function PortalPage({
 
   // A staff member of this office sees the portal in read-only preview; the
   // real client (no office session) gets the full editing flow.
+  // PORTAL_ALLOW_STAFF_EDITS=true lifts the preview for local testing only.
   const hasSessionCookie = (await cookies())
     .getAll()
     .some((c) => c.name.startsWith("sb-"));
   const staffUser = hasSessionCookie ? await getSessionUser() : null;
-  const readOnly = staffUser?.organization_id === request.organization_id;
+  const readOnly =
+    !staffEditsAllowed() &&
+    staffUser?.organization_id === request.organization_id;
 
   const signature =
     (readOnly ? "staff|" : "client|") +

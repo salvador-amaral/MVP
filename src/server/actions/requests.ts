@@ -82,12 +82,24 @@ export async function createRequestAction(
   return { ok: true, data: { id: request.id } };
 }
 
-/** Snapshot the template items into request_items + flip status to "sent". */
+/** The parts of the organization an outgoing email needs. */
+type OrgEmailContext = {
+  name: string;
+  reply_to_email?: string;
+};
+
+/**
+ * Snapshot the template items into request_items + flip status to "sent".
+ *
+ * Order matters: the request is persisted as sent *before* delivery is
+ * attempted, so a mail failure can never roll back a valid state change. A
+ * failed send comes back as `warning` and is recorded on the row.
+ */
 async function snapshotAndSend(
   requestId: string,
   request: Request,
-  orgName: string
-): Promise<{ error?: string }> {
+  org: OrgEmailContext | null
+): Promise<{ error?: string; warning?: string }> {
   const supabase = await createClient();
 
   const { data: templateItems, error: itemError } = await supabase
@@ -132,16 +144,32 @@ async function snapshotAndSend(
     .eq("id", request.client_id)
     .single();
 
-  if (client) {
-    await sendRequestInviteEmail({
-      to: client.email,
-      orgName,
-      clientName: client.name,
-      magicUrl: requestPortalUrl(request.magic_token),
-      dueDate: request.due_date ? new Date(request.due_date) : null,
-      customMessage: request.custom_message || undefined,
-      itemCount: snapshot.length,
-    });
+  if (!client) return {};
+
+  const delivery = await sendRequestInviteEmail({
+    to: client.email,
+    orgName: org?.name ?? "O nosso escritório",
+    clientName: client.name,
+    magicUrl: requestPortalUrl(request.magic_token),
+    dueDate: request.due_date ? new Date(request.due_date) : null,
+    customMessage: request.custom_message || undefined,
+    itemCount: snapshot.length,
+    replyTo: org?.reply_to_email,
+  });
+
+  await supabase
+    .from("requests")
+    .update(
+      delivery.ok
+        ? { invite_sent_at: new Date().toISOString(), last_email_error: "" }
+        : { last_email_error: delivery.error }
+    )
+    .eq("id", requestId);
+
+  if (!delivery.ok) {
+    return {
+      warning: `Pedido criado, mas o email não foi entregue (${delivery.error}). Copie a ligação ou use «Reenviar convite».`,
+    };
   }
   return {};
 }
@@ -158,11 +186,12 @@ export async function sendRequestAction(requestId: string): Promise<ActionState>
   if (error || !request) return { error: error?.message ?? "Pedido não encontrado" };
 
   const org = await getCurrentOrganization(user.id);
-  const result = await snapshotAndSend(requestId, request, org?.name ?? "O nosso escritório");
+  const result = await snapshotAndSend(requestId, request, org);
   if (result.error) return { error: result.error };
 
   revalidatePath("/requests");
   revalidatePath(`/requests/${requestId}`);
+  if (result.warning) return { ok: true, warning: result.warning };
   return { ok: true, message: "Pedido enviado por email ao cliente." };
 }
 
@@ -189,16 +218,32 @@ export async function resendInviteAction(requestId: string): Promise<ActionState
     .select("id")
     .eq("request_id", requestId);
 
-  if (client) {
-    await sendRequestInviteEmail({
-      to: client.email,
-      orgName: org?.name ?? "O nosso escritório",
-      clientName: client.name,
-      magicUrl: requestPortalUrl(request.magic_token),
-      dueDate: request.due_date ? new Date(request.due_date) : null,
-      customMessage: request.custom_message || undefined,
-      itemCount: items?.length ?? 0,
-    });
+  if (!client) return { error: "Cliente não encontrado" };
+
+  const delivery = await sendRequestInviteEmail({
+    to: client.email,
+    orgName: org?.name ?? "O nosso escritório",
+    clientName: client.name,
+    magicUrl: requestPortalUrl(request.magic_token),
+    dueDate: request.due_date ? new Date(request.due_date) : null,
+    customMessage: request.custom_message || undefined,
+    itemCount: items?.length ?? 0,
+    replyTo: org?.reply_to_email,
+  });
+
+  await supabase
+    .from("requests")
+    .update(
+      delivery.ok
+        ? { invite_sent_at: new Date().toISOString(), last_email_error: "" }
+        : { last_email_error: delivery.error }
+    )
+    .eq("id", requestId);
+
+  revalidatePath(`/requests/${requestId}`);
+
+  if (!delivery.ok) {
+    return { error: `Não foi possível enviar o email: ${delivery.error}` };
   }
   return { ok: true, message: "Convite reenviado por email." };
 }
@@ -231,21 +276,30 @@ export async function sendManualReminderAction(
     .single();
   if (!client) return { error: "Cliente não encontrado" };
 
-  await sendReminderEmail({
+  const delivery = await sendReminderEmail({
     to: client.email,
     orgName: org?.name ?? "O nosso escritório",
     clientName: client.name,
     magicUrl: requestPortalUrl(request.magic_token),
     reason: reminderReason(request),
+    replyTo: org?.reply_to_email,
   });
 
+  // Record the attempt either way: a failed manual reminder is the office's
+  // only signal that the client was not actually contacted.
   await supabase.from("reminders").insert({
     request_id: requestId,
     type: "manual",
     channel: "email",
+    status: delivery.ok ? "sent" : "failed",
+    error: delivery.ok ? "" : delivery.error,
   });
 
   revalidatePath(`/requests/${requestId}`);
+
+  if (!delivery.ok) {
+    return { error: `Não foi possível enviar o lembrete: ${delivery.error}` };
+  }
   return { ok: true, message: "Lembrete enviado ao cliente." };
 }
 

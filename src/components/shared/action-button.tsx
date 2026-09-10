@@ -34,6 +34,8 @@ export function ActionButton({
       const result = (await action()) as ActionState | undefined;
       if (result?.error) {
         toast.error(result.error);
+      } else if (result?.warning) {
+        toast.warning(result.warning);
       } else if (result?.ok) {
         toast.success(result.message ?? successMessage ?? "Operação concluída");
       }
