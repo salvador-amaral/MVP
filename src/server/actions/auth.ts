@@ -70,6 +70,18 @@ export async function signUpAction(
     return { error: "Não foi possível criar a conta. Tente novamente." };
   }
 
+  // Supabase deliberately does not error on an already-registered email (so the
+  // response can't be used to enumerate accounts): it returns a user with an
+  // empty `identities` array. Without this guard we would seed a second
+  // organization and then fail on the duplicate users primary key, leaving an
+  // orphan org behind on every retry.
+  if (data.user.identities?.length === 0) {
+    return {
+      error:
+        "Este email já está registado. Inicie sessão — se ainda não confirmou a conta, verifique a caixa de entrada.",
+    };
+  }
+
   // Create organization + owner row (service role: no user session yet).
   const admin = createAdminClient();
   const slug = await uniqueSlug(organizationName);
@@ -97,6 +109,14 @@ export async function signUpAction(
 
   // Seed realistic Portuguese templates for immediate value.
   await ensureDefaultTemplatesForOrg(org.id);
+
+  // With "Confirm email" disabled Supabase returns a session immediately, so the
+  // account is already usable — send them straight to the dashboard instead of
+  // telling them to check an inbox that will never receive anything. With
+  // confirmation enabled there is no session yet and the message below applies.
+  if (data.session) {
+    redirect("/dashboard");
+  }
 
   return {
     ok: true,
