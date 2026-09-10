@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OrgSettingsForm } from "@/components/settings/org-settings-form";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { InviteMemberForm } from "@/components/settings/invite-member-form";
+import { DeleteOrganizationForm } from "@/components/settings/delete-organization-form";
 import { USER_ROLE_LABELS } from "@/lib/constants";
 import type { ReminderSettings } from "@/types/database";
 
@@ -14,6 +15,7 @@ export default async function SettingsPage() {
   if (!org) return null;
 
   const canInvite = user.role === "owner" || user.role === "admin";
+  const isOwner = user.role === "owner";
 
   const supabase = await createClient();
   const { data: members } = await supabase
@@ -75,6 +77,25 @@ export default async function SettingsPage() {
           <ProfileForm defaultName={user.full_name} />
         </CardContent>
       </Card>
+
+      {isOwner ? (
+        <Card className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-lg text-destructive">
+              Zona de perigo
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Elimina definitivamente a organização, os clientes, os pedidos,
+              os modelos e <strong>todos os ficheiros carregados</strong>. As
+              contas da equipa são removidas e ninguém poderá voltar a entrar.
+              Esta ação não pode ser revertida.
+            </p>
+            <DeleteOrganizationForm organizationName={org.name} />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }
