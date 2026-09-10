@@ -92,6 +92,11 @@ export default async function SettingsPage() {
               contas da equipa são removidas e ninguém poderá voltar a entrar.
               Esta ação não pode ser revertida.
             </p>
+            <p className="text-sm text-muted-foreground">
+              Para evitar acidentes, nada é eliminado de imediato: enviámos uma
+              ligação de confirmação para o email do proprietário, e só essa
+              ligação conclui a eliminação.
+            </p>
             <DeleteOrganizationForm organizationName={org.name} />
           </CardContent>
         </Card>

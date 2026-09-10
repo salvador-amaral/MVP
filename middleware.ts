@@ -12,7 +12,7 @@ const PROTECTED_PREFIXES = [
 // Paths that never need a session check: they either redirect server-side or
 // are fully public. Skipping Supabase here avoids a network round-trip on
 // every magic-link / auth-callback request.
-const NO_SESSION_PREFIXES = ["/p/", "/auth"];
+const NO_SESSION_PREFIXES = ["/p/", "/auth", "/confirmar-eliminacao/"];
 
 // Signed-in users are bounced away from these to the dashboard.
 const AUTH_SCREENS = ["/login", "/signup"];

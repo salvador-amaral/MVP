@@ -42,10 +42,12 @@ mobile phone.
   No long-lived public URLs anywhere.
 - **GDPR basics:** org-scoped data, delete capability for organizations/clients,
   data stays in your Supabase region (choose EU), email footer disclaimers.
-  Deleting an organization is owner-only (**Definições → Zona de perigo**) and
-  requires typing the organization name; it also purges the uploaded documents
-  from the private bucket and removes the team's auth accounts, which the
-  database cascade alone would not do.
+  Deleting an organization is a two-step, owner-only flow (**Definições → Zona
+  de perigo**): typing the organization name queues the request and emails a
+  single-use confirmation link to the owner — nothing is destroyed until that
+  link is opened, so a stolen session alone cannot delete a tenant. The final
+  step also purges the uploaded documents from the private bucket and removes
+  the team's auth accounts, which the database cascade alone would not do.
 - Migration file: `supabase/migrations/20250101000000_init.sql` (schema + RLS +
   private bucket).
 

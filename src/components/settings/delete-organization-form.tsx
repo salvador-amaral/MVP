@@ -6,13 +6,16 @@ import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/shared/submit-button";
 import { FormMessage } from "@/components/shared/form-message";
 import { initialActionState } from "@/lib/action-state";
-import { deleteOrganizationAction } from "@/server/actions/settings";
+import { requestOrganizationDeletionAction } from "@/server/actions/organization-deletion";
 
 /**
- * Deleting an organization destroys every client, request and uploaded document
- * in the account, so the action requires the caller to type the organization's
- * name. The button stays disabled until it matches — a `window.confirm()` is
- * far too easy to click through for something this final.
+ * Step 1 of organization deletion: typing the organization's name queues the
+ * request and emails a confirmation link to the owner. Nothing is destroyed
+ * yet — the deletion only happens when that link is opened, so a hijacked
+ * session on its own cannot wipe a tenant without access to the owner's inbox.
+ *
+ * The submit button stays disabled until the name matches, because a
+ * `window.confirm()` is far too easy to click through.
  */
 export function DeleteOrganizationForm({
   organizationName,
@@ -20,7 +23,7 @@ export function DeleteOrganizationForm({
   organizationName: string;
 }) {
   const [state, formAction] = useActionState(
-    deleteOrganizationAction,
+    requestOrganizationDeletionAction,
     initialActionState
   );
   const [typed, setTyped] = useState("");
@@ -49,9 +52,9 @@ export function DeleteOrganizationForm({
       <SubmitButton
         variant="destructive"
         disabled={!matches}
-        pendingText="A eliminar…"
+        pendingText="A enviar…"
       >
-        Eliminar organização definitivamente
+        Enviar email de confirmação
       </SubmitButton>
     </form>
   );

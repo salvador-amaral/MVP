@@ -264,3 +264,50 @@ export async function sendRejectionEmail(data: RejectionEmailData) {
     })
   );
 }
+
+export interface OrganizationDeletionEmailData {
+  to: string;
+  orgName: string;
+  requesterName: string;
+  confirmUrl: string;
+  expiresInMinutes: number;
+}
+
+/**
+ * Sent to the owner when someone requests deletion of the organization. This is
+ * a system email, not an office-to-client one: no Reply-To, and the footer
+ * tells the recipient not to answer.
+ */
+export async function sendOrganizationDeletionEmail(
+  data: OrganizationDeletionEmailData
+): Promise<EmailResult> {
+  const client = getClient();
+  if (!client) {
+    console.info(
+      `[email:dev] eliminação de organização para ${data.to}: ${data.confirmUrl}`
+    );
+    return { ok: true as const, dev: true };
+  }
+
+  const html = layoutHtml(`
+    <h1 style="margin:0 0 8px 0;font-size:20px;">Confirmar eliminação da organização</h1>
+    <p style="color:${muted};">Olá, ${escapeHtml(data.requesterName)}.</p>
+    <p>Foi pedida a <strong>eliminação definitiva</strong> da organização
+      <strong>«${escapeHtml(data.orgName)}»</strong>. Isto elimina os clientes, os
+      pedidos, os modelos e <strong>todos os ficheiros carregados</strong>, e
+      remove as contas da equipa. <strong>Não pode ser revertido.</strong></p>
+    ${buttonHtml(data.confirmUrl, "Confirmar eliminação")}
+    ${footerLink(data.confirmUrl)}
+    <p style="font-size:12px;color:${muted};">A ligação expira em ${data.expiresInMinutes} minutos e só pode ser usada uma vez.</p>
+    <p style="font-size:12px;color:${muted};">Se não pediu isto, ignore este email — nada será eliminado. Considere alterar a sua palavra-passe.</p>
+  `);
+
+  return safeSend("organization deletion", () =>
+    client.emails.send({
+      from: process.env.EMAIL_FROM || "PrepApp <no-reply@prepapp.dev>",
+      to: data.to,
+      subject: `Confirmar eliminação — ${singleLine(data.orgName)}`,
+      html,
+    })
+  );
+}

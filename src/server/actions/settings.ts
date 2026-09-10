@@ -2,14 +2,9 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { requireUser, isAdmin, getCurrentOrganization } from "@/server/data";
+import { requireUser, isAdmin } from "@/server/data";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  deleteStoragePaths,
-  listOrganizationStoragePaths,
-} from "@/lib/storage-cleanup";
 import { inviteSchema, orgSettingsSchema } from "@/lib/validations";
 import type { ActionState } from "@/lib/action-state";
 
@@ -182,75 +177,4 @@ export async function inviteMemberAction(
 
   revalidatePath("/settings");
   return { ok: true, message: `Convite enviado para ${email}.` };
-}
-
-/**
- * Irreversibly deletes the organization and everything inside it.
- *
- * Owner-only, and requires the caller to type the organization's exact name.
- * It is also the one operation that cannot go through RLS: `organizations` has
- * select and update policies but deliberately no delete policy, so the row can
- * only be removed with the service-role client.
- *
- * Three things outlive the database cascade and have to be handled explicitly:
- *   1. Storage objects — `files` rows cascade away, the documents in the
- *      `client-files` bucket do not.
- *   2. Supabase Auth accounts — `users` rows cascade, `auth.users` does not.
- *   3. Our own session, which we clear before removing our own account.
- */
-export async function deleteOrganizationAction(
-  _prev: ActionState,
-  formData: FormData
-): Promise<ActionState> {
-  const user = await requireUser();
-
-  if (user.role !== "owner") {
-    return { error: "Apenas o proprietário pode eliminar a organização." };
-  }
-
-  const org = await getCurrentOrganization(user.id);
-  if (!org) return { error: "Organização não encontrada." };
-
-  const confirmation = String(formData.get("confirmation") ?? "").trim();
-  if (confirmation !== org.name) {
-    return {
-      error: `Para confirmar, escreva o nome exato da organização: ${org.name}`,
-    };
-  }
-
-  const admin = createAdminClient();
-
-  // Gather what we need *before* destroying anything: once the rows are gone
-  // the storage paths are unrecoverable.
-  const [storagePaths, members] = await Promise.all([
-    listOrganizationStoragePaths(org.id),
-    admin.from("users").select("id").eq("organization_id", org.id),
-  ]);
-  const memberIds = (members.data ?? []).map((m) => m.id);
-
-  // 1. Files in the bucket — the cascade does not touch these.
-  await deleteStoragePaths(storagePaths);
-
-  // 2. The organization row: clients, templates, requests, request_items,
-  //    files and reminders all cascade from here.
-  const { error: deleteError } = await admin
-    .from("organizations")
-    .delete()
-    .eq("id", org.id);
-  if (deleteError) return { error: deleteError.message };
-
-  // 3. Clear our own session while the account still exists, so the browser is
-  //    not left holding a token for a user that is about to disappear.
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-
-  // 4. Auth accounts outlive the rows we just cascaded.
-  for (const id of memberIds) {
-    const { error } = await admin.auth.admin.deleteUser(id);
-    if (error) {
-      console.error(`failed to delete auth user ${id}:`, error.message);
-    }
-  }
-
-  redirect("/login");
 }
