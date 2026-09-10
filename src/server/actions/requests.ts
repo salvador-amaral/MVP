@@ -91,7 +91,12 @@ type OrgEmailContext = {
 /**
  * Snapshot the template items into request_items + flip status to "sent".
  *
- * Order matters: the request is persisted as sent *before* delivery is
+ * The draft → sent transition is *claimed atomically* (`where status = 'draft'`),
+ * so a double-click or a stale tab can neither snapshot the items twice nor
+ * email the client twice: Postgres serialises the competing updates and only
+ * one caller matches the draft row. Everyone else bails out here.
+ *
+ * Once claimed, the request is persisted as sent *before* delivery is
  * attempted, so a mail failure can never roll back a valid state change. A
  * failed send comes back as `warning` and is recorded on the row.
  */
@@ -102,6 +107,8 @@ async function snapshotAndSend(
 ): Promise<{ error?: string; warning?: string }> {
   const supabase = await createClient();
 
+  // Validate before claiming: a template with no items must leave the request
+  // as a draft so the office can fix it.
   const { data: templateItems, error: itemError } = await supabase
     .from("template_items")
     .select("id, title, description, type, is_required, position")
@@ -110,6 +117,24 @@ async function snapshotAndSend(
   if (itemError) return { error: itemError.message };
   if (!templateItems || templateItems.length === 0) {
     return { error: "O modelo selecionado não tem itens. Adicione itens primeiro." };
+  }
+
+  const { data: claimed, error: claimError } = await supabase
+    .from("requests")
+    .update({
+      status: "sent",
+      expires_at: defaultTokenExpiry().toISOString(),
+    })
+    .eq("id", requestId)
+    .eq("status", "draft")
+    .select("id")
+    .maybeSingle();
+  if (claimError) return { error: claimError.message };
+  if (!claimed) {
+    return {
+      error:
+        "Este pedido já foi enviado — recarregue a página para ver o estado atual.",
+    };
   }
 
   const snapshot = templateItems.map((t) => ({
@@ -126,16 +151,15 @@ async function snapshotAndSend(
   const { error: insertError } = await supabase
     .from("request_items")
     .insert(snapshot);
-  if (insertError) return { error: insertError.message };
-
-  const { error: updateError } = await supabase
-    .from("requests")
-    .update({
-      status: "sent",
-      expires_at: defaultTokenExpiry().toISOString(),
-    })
-    .eq("id", requestId);
-  if (updateError) return { error: updateError.message };
+  if (insertError) {
+    // Hand the request back rather than leaving it "sent" with no checklist
+    // for the client to open.
+    await supabase
+      .from("requests")
+      .update({ status: "draft", expires_at: null })
+      .eq("id", requestId);
+    return { error: insertError.message };
+  }
 
   // Client + portal link for the invite email.
   const { data: client } = await supabase
