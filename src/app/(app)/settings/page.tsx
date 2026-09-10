@@ -1,0 +1,79 @@
+import { createClient } from "@/lib/supabase/server";
+import { requireUser, getCurrentOrganization } from "@/server/data";
+import { PageHeader } from "@/components/shared/page-header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OrgSettingsForm } from "@/components/settings/org-settings-form";
+import { ProfileForm } from "@/components/settings/profile-form";
+import { InviteMemberForm } from "@/components/settings/invite-member-form";
+import { USER_ROLE_LABELS } from "@/lib/constants";
+import type { ReminderSettings } from "@/types/database";
+
+export default async function SettingsPage() {
+  const user = await requireUser();
+  const org = await getCurrentOrganization(user.id);
+  if (!org) return null;
+
+  const canInvite = user.role === "owner" || user.role === "admin";
+
+  const supabase = await createClient();
+  const { data: members } = await supabase
+    .from("users")
+    .select("id, full_name, email, role")
+    .order("created_at", { ascending: true });
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-6">
+      <PageHeader
+        title="Definições"
+        description="Organização, lembretes automáticos e perfil."
+      />
+
+      {canInvite ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Organização</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <OrgSettingsForm
+              defaultName={org.name}
+              reminderSettings={org.reminder_settings as ReminderSettings}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Equipa</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <ul className="divide-y">
+            {(members ?? []).map((member) => (
+              <li key={member.id} className="flex items-center justify-between py-3">
+                <div>
+                  <div className="text-sm font-medium">
+                    {member.full_name || member.email}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{member.email}</div>
+                </div>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                  {USER_ROLE_LABELS[member.role as keyof typeof USER_ROLE_LABELS]}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {canInvite ? <InviteMemberForm /> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">O meu perfil</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ProfileForm defaultName={user.full_name} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
